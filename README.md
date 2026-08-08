@@ -71,7 +71,10 @@ AGENTS.md                            Agent-oriented project docs
 
 Fork [`sameeraman/gh-600-lab-starter`](https://github.com/sameeraman/gh-600-lab-starter), then
 follow [section 4 of the preparation guide](lab-preparation.md#4-fork-and-clone-the-starter-repository).
-All paths in these guides are relative to the root of your cloned fork.
+All paths in these guides are relative to the root of your cloned fork. The properly deploy application will look like below. 
+
+![app-frontend-preview](images/SCR-20260802-hpem.png)
+
 
 ```
 gh-600-lab-starter/
