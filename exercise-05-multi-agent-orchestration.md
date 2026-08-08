@@ -37,6 +37,9 @@ build-and-test
                                                                       └──> deploy (main)
 ```
 
+![actions-preview](images/SCR-20260808-mbny.png)
+
+
 The three review jobs depend on `build-and-test` and run concurrently. `consolidate` waits for
 all of them. Exercise 7 later adds `e2e-test` to this graph and makes both consolidation and
 deployment wait for its evidence.
