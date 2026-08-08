@@ -15,6 +15,10 @@ put a human approval gate in front of production.
 | `.github/prompts/test-analysis.prompt.md` | Reusable test analysis prompt |
 | `.github/workflows/ci.yml` | Extended with E2E evidence, auditor review, consolidation, and gated deployment |
 
+The completed Github Actions workflow would look like below. 
+![completed-workflow](images/SCR-20260808-rsck.png)
+
+
 **Prerequisite:** [Exercise 6](exercise-06-guardrails-and-accountability.md) complete.
 
 **Time:** ~50 minutes
