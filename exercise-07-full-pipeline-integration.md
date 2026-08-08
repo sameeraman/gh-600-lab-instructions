@@ -270,9 +270,11 @@ Open `.github/workflows/ci.yml`, find the end of the existing `dependency-review
 the following complete job immediately after it and before `agent-review`. Keep `e2e-test` at
 the same two-space indentation level as the other job names under `jobs:`.
 
-The starter repository already contains the supporting files this job uses:
-`src/frontend/e2e/test-harness.mjs`, `src/frontend/e2e/todo.spec.js`, and
-`src/frontend/playwright.config.cjs`.
+> **Already in the starter repository:** You do not need to create the test harness or change
+> the Playwright reporter configuration. The starter includes
+> `src/frontend/e2e/test-harness.mjs` and `src/frontend/e2e/todo.spec.js`. Its
+> `src/frontend/playwright.config.cjs` already enables the JSON reporter and writes the report
+> to `results.json`, which the pull request comment step reads.
 
 ```yaml
   # ---- End-to-end tests (merge gate) ----

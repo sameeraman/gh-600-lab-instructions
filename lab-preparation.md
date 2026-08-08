@@ -107,6 +107,16 @@ Only the foundational pieces the pipeline cannot create for itself:
 | A **Microsoft Entra ID tenant** you can create app registrations in | The pipeline's identity, the OIDC federation, and the API's audience are all Entra objects. The application also signs users in against this tenant |
 | An **Azure subscription** linked to that tenant, with quota to create resources | Every resource in the architecture diagram is provisioned into it |
 | A **GitHub account** that can fork a public repository | You fork the starter in section 4. The pipeline and OIDC trust belong to that specific fork |
+| An active **GitHub Copilot plan with Copilot CLI access** for the account that owns the fork | The agent-review jobs invoke Copilot CLI in GitHub Actions. Copilot Free is sufficient for the lab, subject to its usage limits; paid individual plans and organization-assigned seats also work |
+
+> **Check Copilot access before you begin.** Sign in as the account that will own the fork and
+> open [GitHub Copilot settings](https://github.com/settings/copilot). Confirm that Copilot is
+> active for that account. If the repository belongs to an organization, its owner or enterprise
+> administrator must also allow Copilot CLI in policy settings. The workflow's
+> `copilot-requests: write` permission authorizes the token, but it does not grant a Copilot
+> licence or override an organization policy. Without both entitlement and policy access, every
+> agent-review matrix leg fails with `Access denied by policy settings` even when the YAML is
+> correct.
 
 The subscription and the tenant must be the same one throughout. `az account show` reports the
 tenant your subscription is attached to — if you have access to several tenants, confirm you are
