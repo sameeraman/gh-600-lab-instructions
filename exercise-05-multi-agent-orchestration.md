@@ -181,6 +181,9 @@ output, which is what makes the artifact useful to a later job.
   agent-review:
     needs: [build-and-test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      copilot-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -188,23 +191,24 @@ output, which is what makes the artifact useful to a later job.
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
+          package-manager-cache: false
 
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
       - name: Run ${{ matrix.agent }} Agent
         env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
         run: |
           copilot --agent=${{ matrix.agent }} \
             -p "Analyze the changes in this PR. Focus on your specialization area. Report findings with severity and file paths." \
             --no-ask-user > "${{ matrix.agent }}-report.md"
 
       - name: Upload Agent Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.agent }}-report
           path: ${{ matrix.agent }}-report.md

@@ -8,6 +8,45 @@ Each guide is written to be followed independently: it tells you exactly which f
 create, what to put in it, why that file exists, how to verify it, and what the
 certification exam expects you to remember.
 
+## What's included in the starter repository
+
+The [`gh-600-lab-starter`](https://github.com/sameeraman/gh-600-lab-starter) repository
+provides:
+
+- A React and Vite frontend for the sample Todo application.
+- An ASP.NET Core 8 Web API with Entity Framework Core.
+- Unit tests and Playwright end-to-end tests.
+- Bicep templates for provisioning the Azure environment.
+- Configuration for Azure Static Web Apps, App Service, managed identity, and Azure SQL
+    Database.
+- A conventional GitHub Actions pipeline with the GH-500 security baseline.
+
+## What you will do in the lab
+
+Using the guides in the
+[`gh-600-lab-instructions`](https://github.com/sameeraman/gh-600-lab-instructions)
+repository, you will:
+
+- Deploy the sample application to Azure using OIDC federation and managed identity.
+- Create repository-wide and path-specific instructions that give agents durable context.
+- Build specialized custom agents with deliberately limited tool permissions.
+- Configure MCP servers and a cloud-agent environment.
+- Analyze agent memory and session state, then diagnose and tune agent failures.
+- Run unit and Playwright end-to-end tests as evidence in an agentic CI/CD pipeline.
+- Orchestrate parallel agent reviews and consolidate their reports through workflow artifacts.
+- Add preventive policy hooks, audit trails, and least-privilege controls.
+- Gate production deployment on human approval, then run smoke tests and an agent audit.
+- Test your GH-600 knowledge with exam-style questions and a final reference guide.
+
+## At a glance
+
+- **Total duration:** approximately 5 hours 15 minutes, including lab preparation.
+- **Environment:** live Azure resources in your own subscription and Microsoft Entra tenant.
+- **Estimated cost:** approximately US$10–20 per month until you complete the
+    [teardown](lab-preparation.md#14-teardown).
+- **Repository visibility:** use a public fork unless your account has a GitHub Code Security
+    licence. See [why the lab uses a public fork](lab-preparation.md#42-enable-actions-and-the-dependency-graph).
+
 ## Before you start
 
 [Lab Preparation](lab-preparation.md) — fork and clone the starter, then complete the one-time
@@ -15,7 +54,21 @@ Azure and GitHub setup: resource group, OIDC federated identity, app registratio
 settings, and secrets. The exercises assume the sample application is already deployed, which
 is what this guide gets you.
 
-## Assumed GH-500 baseline
+### Prerequisites summary
+
+- Azure CLI 2.60 or later, GitHub CLI 2.40 or later, and Git 2.30 or later. See the
+    [required tools](lab-preparation.md#2-prerequisites).
+- Permission to create Microsoft Entra app registrations.
+- Azure **Owner**, or **Contributor + User Access Administrator**, so you can create role
+    assignments. Review the full [account and permission requirements](lab-preparation.md#2-prerequisites).
+- Access to GitHub Copilot for the IDE and Copilot CLI activities used in the exercises.
+
+## Assumed baseline knowledge
+
+This lab assumes working knowledge of Git and GitHub, including repositories, branches, commits,
+pull requests, and GitHub Actions. It also builds on the GitHub Copilot knowledge covered by
+GH-300. You should be comfortable using GitHub Copilot in the IDE and understand its core
+features before starting the GH-600 exercises.
 
 The starter repository already contains the application source, Bicep infrastructure, and a
 conventional GitHub Actions pipeline. It also includes the CodeQL, dependency-review, and secret-
@@ -23,25 +76,26 @@ scanning controls normally covered by GH-500. This lab treats those controls as 
 baseline so that the exercises can stay focused on GH-600 topics: custom agents, tools, MCP,
 orchestration, memory, evaluation, guardrails, and accountable deployment.
 
-You are not expected to rebuild or study the GH-500 controls in depth here. On public forks,
+The exercises do not reteach Git, GitHub, GH-300 concepts, or GH-500 controls. On public forks,
 CodeQL and dependency review run normally after Actions and the dependency graph are enabled.
 On private forks without GitHub Code Security, the baseline workflow clearly skips unsupported
-scans instead of allowing them to distract from the GH-600 work.
+scans so that the lab can remain focused on GH-600.
 
 ## Guides
 
 Work through them in order — each builds on the last.
 
-| Guide | Domain | What you build |
-|-------|--------|----------------|
-| [1 — Prepare Agent Architecture](exercise-01-agent-architecture.md) | 1 | `.github/copilot-instructions.md` |
-| [2 — Tool Use & Environment](exercise-02-tool-use-and-environment.md) | 2 | Custom agents, MCP config, cloud-agent setup |
-| [3 — Memory, State & Execution](exercise-03-memory-state-execution.md) | 3 | *(analysis)* Session logs, durable state |
-| [4 — Evaluation, Error Analysis & Tuning](exercise-04-evaluation-and-tuning.md) | 4 | *(analysis)* Failure diagnosis, tuning order |
-| [5 — Multi-Agent Orchestration](exercise-05-multi-agent-orchestration.md) | 5 | `.github/workflows/agentic-ci.yml` |
-| [6 — Guardrails & Accountability](exercise-06-guardrails-and-accountability.md) | 6 | Pre-tool policy hooks |
-| [7 — Full Pipeline Integration](exercise-07-full-pipeline-integration.md) | — | Auditor agent, instructions, prompts, deployment |
-| [8 — Exam Practice & Cheat Sheet](exercise-08-exam-practice.md) | — | *(revision)* 10 questions + reference |
+| Guide | Domain | Time | What you build |
+|-------|--------|------|----------------|
+| [0 — Lab Preparation](lab-preparation.md) | Prerequisites | ~30 min | Azure and GitHub lab environment |
+| [1 — Prepare Agent Architecture](exercise-01-agent-architecture.md) | 1 | ~15 min | `.github/copilot-instructions.md` |
+| [2 — Tool Use & Environment](exercise-02-tool-use-and-environment.md) | 2 | ~55 min | Custom agents, MCP config, cloud-agent setup |
+| [3 — Memory, State & Execution](exercise-03-memory-state-execution.md) | 3 | ~30 min | *(analysis)* Session logs, durable state |
+| [4 — Evaluation, Error Analysis & Tuning](exercise-04-evaluation-and-tuning.md) | 4 | ~25 min | *(analysis)* Failure diagnosis, tuning order |
+| [5 — Multi-Agent Orchestration](exercise-05-multi-agent-orchestration.md) | 5 | ~45 min | `.github/workflows/agentic-ci.yml` |
+| [6 — Guardrails & Accountability](exercise-06-guardrails-and-accountability.md) | 6 | ~35 min | Pre-tool policy hooks |
+| [7 — Full Pipeline Integration](exercise-07-full-pipeline-integration.md) | — | ~50 min | Auditor agent, instructions, prompts, deployment |
+| [8 — Exam Practice & Cheat Sheet](exercise-08-exam-practice.md) | — | ~30 min | *(revision)* 10 questions + reference |
 
 Exercises 3 and 4 create no files. They cover judgement the exam tests through log reading
 and scenario matching, and the concepts they establish are applied directly in 5 and 6.
@@ -104,6 +158,15 @@ move on until it passes.
 Verify with `test -s` rather than `test -f`. Creating a file in an editor does not write it
 to disk until you save, and `-f` passes on an empty file — which is the most common way to
 lose time in this lab.
+
+If setup or the first deployment fails, use the preparation guide's
+[troubleshooting table](lab-preparation.md#13-if-the-first-run-fails). It covers common OIDC,
+permissions, private-repository, provider-registration, and deployment-approval failures.
+
+> **Clean up when you finish.** Azure resources continue to incur charges until they are
+> removed. Deleting only the resource group does not remove the Microsoft Entra app
+> registrations or the GitHub secrets, variables, and environment. Follow the complete
+> [teardown procedure](lab-preparation.md#14-teardown).
 
 ## Conventions used in these guides
 
