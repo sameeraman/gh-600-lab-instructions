@@ -264,21 +264,225 @@ speaks, the bad code is already merged and already live.
 So `e2e-test` runs on every pull request, and to do that it must not depend on anything a pull
 request lacks: no Azure subscription, no secrets, no deployed environment. It gets there by
 hosting the whole application on the runner. The API is started with **no connection string**,
-which makes it fall back to an in-memory store and skip migrations entirely:
+which makes it fall back to an in-memory store and skip migrations entirely.
 
-Add the `e2e-test` job from the completed repository's
-[`ci.yml`](https://github.com/sameeraman/gh-600-lab/blob/main/.github/workflows/ci.yml) directly
-after `dependency-review`. Preserve its job-level permissions, readiness loops, test harness,
-evidence upload, screenshot publishing guard, and update-in-place pull request comment. The
-excerpts below explain the parts that are easy to misconfigure; the linked completed workflow
-is the canonical full job.
+Open `.github/workflows/ci.yml`, find the end of the existing `dependency-review` job, and add
+the following complete job immediately after it and before `agent-review`. Keep `e2e-test` at
+the same two-space indentation level as the other job names under `jobs:`.
+
+The starter repository already contains the supporting files this job uses:
+`src/frontend/e2e/test-harness.mjs`, `src/frontend/e2e/todo.spec.js`, and
+`src/frontend/playwright.config.cjs`.
 
 ```yaml
+  # ---- End-to-end tests (merge gate) ----
+  # Runs on every pull request, against an API hosted on the runner. No Azure,
+  # no secrets, nothing deployed. That is the point: this has to be able to
+  # block a merge, so it cannot depend on anything a pull request lacks.
+  e2e-test:
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Install Frontend Dependencies
+        run: cd src/frontend && npm ci
+
+      - name: Build Frontend
+        run: cd src/frontend && npm run build
+
+      - name: Install Playwright browser
+        run: cd src/frontend && npx playwright install --with-deps chromium
+
+      # With no ConnectionStrings__TodoDb the API uses an in-memory store and
+      # skips migrations, so the whole suite runs without a database.
       - name: Start the API
         env:
           ASPNETCORE_ENVIRONMENT: Development
           Authentication__RequireSignedTokens: 'false'
-        run: dotnet run --project src/api/TodoApi.csproj -c Release --urls http://127.0.0.1:5000 &
+        run: |
+          set -uo pipefail
+          dotnet run --project src/api/TodoApi.csproj -c Release --urls http://127.0.0.1:5000 &
+          principal=$(printf '{"userId":"warmup"}' | base64 -w0)
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -H "x-ms-client-principal: ${principal}" \
+              http://127.0.0.1:5000/api/todo || true)
+            if [ "$code" = "200" ]; then
+              echo "API ready after ${i}s."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API failed to start."
+          exit 1
+
+      # The Static Web App only signs users in interactively, which headless
+      # Playwright cannot do. The harness stands in for the SWA: it serves the
+      # built SPA and injects the same x-ms-client-principal header that the
+      # SWA's linked backend would.
+      - name: Start the test harness
+        env:
+          TEST_API_URL: http://127.0.0.1:5000
+        run: |
+          set -euo pipefail
+          node src/frontend/e2e/test-harness.mjs &
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:3000/ >/dev/null; then
+              echo "Harness ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Harness failed to start."
+          exit 1
+
+      - name: Run Playwright
+        working-directory: src/frontend
+        env:
+          PLAYWRIGHT_EXTERNAL_SERVER: 'true'
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test
+
+      # One shot of the app as the suite left it, for the comment. The per-test
+      # screenshots are in the artifact; this is the one a reviewer will glance at.
+      - name: Capture the landing page
+        if: always()
+        working-directory: src/frontend
+        run: |
+          npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=1500 \
+            http://127.0.0.1:3000 landing.png
+
+      # Nobody can see the runner after the fact. Screenshots, traces and the
+      # HTML report are the only evidence this job leaves behind.
+      - name: Upload E2E evidence
+        id: evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-evidence
+          path: |
+            src/frontend/playwright-report/
+            src/frontend/test-results/
+            src/frontend/landing.png
+          retention-days: 14
+          if-no-files-found: warn
+
+      # A comment can only display an image it can fetch over HTTP, and artifact
+      # contents have no URL. Parking the shot on a side branch gives it one.
+      # Fork pull requests get a read-only token, so they skip this.
+      - name: Publish the landing page screenshot
+        id: shot
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          test -f src/frontend/landing.png || exit 0
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          work=$(mktemp -d)
+          if ! git clone --depth 1 --branch e2e-screenshots "$remote" "$work" 2>/dev/null; then
+            git clone --depth 1 "$remote" "$work"
+            git -C "$work" checkout --orphan e2e-screenshots
+            git -C "$work" rm -rqf .
+          fi
+          mkdir -p "$work/pr-${PR}"
+          cp src/frontend/landing.png "$work/pr-${PR}/landing.png"
+          git -C "$work" add -A
+          git -C "$work" \
+            -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "E2E landing page for PR #${PR}" || true
+          git -C "$work" push -q "$remote" e2e-screenshots
+          # The file is overwritten each run, so the URL needs a cache buster.
+          echo "url=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/e2e-screenshots/pr-${PR}/landing.png?v=${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      # A reviewer should not have to go hunting through Actions to find out
+      # whether the browser tests passed. Put the result where the review is.
+      - name: Comment the results on the pull request
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        env:
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+          SHOT_URL: ${{ steps.shot.outputs.url }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- e2e-results -->';
+
+            let rows = '';
+            let counts = { passed: 0, failed: 0, skipped: 0 };
+            try {
+              const report = JSON.parse(fs.readFileSync('src/frontend/results.json', 'utf8'));
+              const walk = (suite) => {
+                for (const spec of suite.specs ?? []) {
+                  const result = spec.tests?.[0]?.results?.[0];
+                  const status = result?.status ?? 'unknown';
+                  counts[status] = (counts[status] ?? 0) + 1;
+                  const icon = status === 'passed' ? '✅' : status === 'skipped' ? '⏭️' : '❌';
+                  rows += `| ${icon} | ${spec.title} | ${result?.duration ?? 0} ms |\n`;
+                }
+                for (const child of suite.suites ?? []) walk(child);
+              };
+              for (const suite of report.suites ?? []) walk(suite);
+            } catch (error) {
+              rows = `| ⚠️ | Could not read the Playwright report: ${error.message} | |\n`;
+            }
+
+            const shot = process.env.SHOT_URL
+              ? `### The app as the suite left it\n\n![Landing page](${process.env.SHOT_URL})\n`
+              : '_Screenshot publishing is skipped for pull requests from forks._\n';
+
+            const body = [
+              marker,
+              '## End-to-end test results',
+              '',
+              `**${counts.passed} passed, ${counts.failed} failed, ${counts.skipped} skipped**`,
+              '',
+              '| | Test | Duration |',
+              '|---|---|---|',
+              rows,
+              shot,
+              `📎 **[Download every test's screenshot, plus traces and the HTML report](${process.env.ARTIFACT_URL})**`
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const existing = (await github.rest.issues.listComments({ owner, repo, issue_number }))
+              .data.find(c => c.body?.startsWith(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Summarise the run
+        if: always()
+        run: |
+          {
+            echo "## End-to-end validation"
+            echo
+            echo "Result: \`${{ job.status }}\`"
+            echo
+            echo "Covered: create a task, mark a task done, delete a task."
+            echo
+            echo "Download the **e2e-evidence** artifact for a screenshot of every"
+            echo "test, plus traces and the full HTML report."
+          } >> "$GITHUB_STEP_SUMMARY"
 ```
 
 The remaining obstacle is the front door. The Static Web App requires an interactive Entra
@@ -551,7 +755,6 @@ AGENTS.md                                  Agent-oriented project docs
 ### Deployment security
 
 - `id-token: write` enables OIDC — no stored credentials
-- `--allow-tool='shell(curl:*)'` scopes shell access to one command
 - `--what-if` previews infrastructure changes before applying
 
 ---
