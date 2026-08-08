@@ -180,7 +180,7 @@ every Copilot CLI invocation in a workflow — no exceptions.
 
 ```yaml
 - name: Upload Agent Report
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   with:
     name: reviewer-report
     path: reviewer-report.md

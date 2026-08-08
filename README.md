@@ -35,7 +35,7 @@ repository, you will:
 - Run unit and Playwright end-to-end tests as evidence in an agentic CI/CD pipeline.
 - Orchestrate parallel agent reviews and consolidate their reports through workflow artifacts.
 - Add preventive policy hooks, audit trails, and least-privilege controls.
-- Gate production deployment on human approval, then run smoke tests and an agent audit.
+- Gate production deployment on human approval and verify the deployed authentication boundary.
 - Test your GH-600 knowledge with exam-style questions and a final reference guide.
 
 ## At a glance
@@ -92,7 +92,7 @@ Work through them in order — each builds on the last.
 | [2 — Tool Use & Environment](exercise-02-tool-use-and-environment.md) | 2 | ~55 min | Custom agents, MCP config, cloud-agent setup |
 | [3 — Memory, State & Execution](exercise-03-memory-state-execution.md) | 3 | ~30 min | *(analysis)* Session logs, durable state |
 | [4 — Evaluation, Error Analysis & Tuning](exercise-04-evaluation-and-tuning.md) | 4 | ~25 min | *(analysis)* Failure diagnosis, tuning order |
-| [5 — Multi-Agent Orchestration](exercise-05-multi-agent-orchestration.md) | 5 | ~45 min | `.github/workflows/agentic-ci.yml` |
+| [5 — Multi-Agent Orchestration](exercise-05-multi-agent-orchestration.md) | 5 | ~45 min | Agent review and consolidation added to `.github/workflows/ci.yml` |
 | [6 — Guardrails & Accountability](exercise-06-guardrails-and-accountability.md) | 6 | ~35 min | Pre-tool policy hooks |
 | [7 — Full Pipeline Integration](exercise-07-full-pipeline-integration.md) | — | ~50 min | Auditor agent, instructions, prompts, deployment |
 | [8 — Exam Practice & Cheat Sheet](exercise-08-exam-practice.md) | — | ~30 min | *(revision)* 10 questions + reference |
@@ -116,7 +116,7 @@ and scenario matching, and the concepts they establish are applied directly in 5
 ├── hooks/                           Preventive guardrails
 └── workflows/
     ├── copilot-setup-steps.yml      Cloud agent environment                    
-    └── ci.yml                       Build, test, e2e, approval, deploy, smoke, agent review pipeline
+    └── ci.yml                       Build, test, E2E, agent review, approval, and deployment pipeline
 AGENTS.md                            Agent-oriented project docs
 .mcp.json                            External tool servers
 ```

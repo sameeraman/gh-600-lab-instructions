@@ -13,7 +13,7 @@ put a human approval gate in front of production.
 | `.github/instructions/workflows.instructions.md` | Rules scoped to workflows |
 | `.github/prompts/security-review.prompt.md` | Reusable security review prompt |
 | `.github/prompts/test-analysis.prompt.md` | Reusable test analysis prompt |
-| `.github/workflows/ci.yml` | Extended with e2e → approve → deploy → smoke → review |
+| `.github/workflows/ci.yml` | Extended with E2E evidence, auditor review, consolidation, and gated deployment |
 
 **Prerequisite:** [Exercise 6](exercise-06-guardrails-and-accountability.md) complete.
 
@@ -23,10 +23,10 @@ put a human approval gate in front of production.
 
 ## What is still missing
 
-Exercise 5 built a pipeline that reviews code and scans it for security problems. Nothing in
-it yet asks whether the *change process* was followed — whether the gates are intact, whether
-approval is still required, whether a safety control was quietly removed. That is a different
-question from "is this code correct?", and it needs its own agent.
+Exercise 5 extended the starter's `ci.yml` so it reviews code and scans it for security
+problems. Nothing in it yet asks whether the *change process* was followed — whether the gates
+are intact, whether approval is still required, whether a safety control was quietly removed.
+That is a different question from "is this code correct?", and it needs its own agent.
 
 This exercise adds that agent, fills in the remaining layers of the context system —
 repository-level documentation, path-scoped instructions, reusable prompts — and closes the
@@ -92,24 +92,28 @@ while reading a diff, and it is exactly how a safety control quietly disappears.
 # AGENTS.md
 
 ## Project Structure
-- `src/api/` — .NET 8 Web API (TodoApi)
-- `src/frontend/` — React/Vite frontend
-- `infra/` — Azure Bicep templates
-- `.github/workflows/` — CI/CD pipelines
-- `.github/agents/` — Custom Copilot agents
+
+- `src/api/` - ASP.NET Core 8 Todo API with EF Core.
+- `src/frontend/` - React and Vite frontend.
+- `infra/` - Azure infrastructure defined with Bicep.
+- `.github/workflows/` - Build, test, security, and deployment workflows.
 
 ## Testing Commands
-- API: `cd src/api/Tests && dotnet test`
+
+- API: `dotnet test src/api/Tests/TodoApi.Tests.csproj`
 - Frontend: `cd src/frontend && npm test`
+- Frontend build: `cd src/frontend && npm run build`
 - E2E: `cd src/frontend && npx playwright test`
-- Infrastructure: `az bicep build --file infra/main.bicep`
 
 ## Agent Guidelines
-- Always run tests before proposing changes
-- Open draft PRs for review — never push directly to main
-- Use least-privilege tools (read/search for review, add edit only when modifying)
-- Include validation output in PR description
-- Security-sensitive changes require human approval
+
+- Work on a branch and submit changes through a pull request.
+- Do not push directly to `main`.
+- Use read-only tools for reviews.
+- Use edit and execute tools only for implementation or testing tasks.
+- Keep changes scoped to the requested task.
+- Report validation results and unresolved risks.
+- Require human review for deployment and infrastructure changes.
 ```
 
 `AGENTS.md` is an emerging cross-tool convention: a repository-root file that agent tooling
@@ -237,8 +241,9 @@ one wins. You extend the pipeline that already exists.
 
 ```
 build-and-test ─┬─> e2e-test ───────┐
-                ├─> security-scan ──┤─> [human] ─> deploy ─> smoke-test ─> deployment-review
-                └─> dependency-review
+                ├─> agent-review ───┤
+                ├─> security-scan ──┼─> consolidate ─> publish-summary
+                └─> dependency-review ┘       └───────> [human] ─> deploy
 ```
 
 Four ideas, each independently examinable:
@@ -246,9 +251,9 @@ Four ideas, each independently examinable:
 | Property | Mechanism |
 |---|---|
 | Nothing merges unproven | `e2e-test` runs on every pull request |
-| Nothing ships unscanned | `deploy` declares `needs: [build-and-test, security-scan, e2e-test]` |
+| Nothing ships unscanned | `deploy` waits for deterministic checks, E2E, and consolidation |
 | A human decides | Required reviewer on the `production` environment |
-| The deployment proves itself | `smoke-test` calls the deployed API |
+| The deployed boundary is checked | `deploy` rejects a directly forged identity header |
 
 ### Proving the application before merge
 
@@ -260,6 +265,13 @@ So `e2e-test` runs on every pull request, and to do that it must not depend on a
 request lacks: no Azure subscription, no secrets, no deployed environment. It gets there by
 hosting the whole application on the runner. The API is started with **no connection string**,
 which makes it fall back to an in-memory store and skip migrations entirely:
+
+Add the `e2e-test` job from the completed repository's
+[`ci.yml`](https://github.com/sameeraman/gh-600-lab/blob/main/.github/workflows/ci.yml) directly
+after `dependency-review`. Preserve its job-level permissions, readiness loops, test harness,
+evidence upload, screenshot publishing guard, and update-in-place pull request comment. The
+excerpts below explain the parts that are easy to misconfigure; the linked completed workflow
+is the canonical full job.
 
 ```yaml
       - name: Start the API
@@ -297,7 +309,7 @@ So the job posts the results back to the pull request itself:
 ```yaml
       - name: Comment the results on the pull request
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
 ```
 
 Three details make this work properly:
@@ -349,23 +361,20 @@ looked like.
 > they are there and say so in the test plan — not to let a green suite imply coverage it does
 > not have.
 
-### Proving the deployment after it happens
+### Verifying the deployed authentication boundary
 
-Those gaps are exactly what `smoke-test` covers. Once `deploy` finishes, it makes one
-authenticated round-trip against the real API:
+The completed workflow keeps post-deployment validation inside `deploy`. After publishing the
+API and frontend, it reads the App Service Easy Auth configuration and requires all three
+platform controls to be enabled: authentication, mandatory authentication for every request,
+and the linked Static Web Apps identity provider.
 
-```yaml
-  smoke-test:
-    needs: [deploy]
-```
+It then calls the API directly with a forged `x-ms-client-principal` header. Only `400`, `401`,
+or `403` is acceptable. A success response would prove that a caller can bypass the Static Web
+App front door and impersonate a user, so the deployment fails.
 
-That single request exercises everything the pre-merge suite could not: the managed identity's
-SQL grant, the Entra-only database, the App Service cold start. It retries for five minutes,
-because serverless SQL auto-pauses and a fresh App Service is slow to wake.
-
-Notice the division of labour. The pre-merge suite tests **behaviour** and can block a merge.
-The post-deploy check tests **infrastructure** and can fail a release. Neither duplicates the
-other, and each runs at the only point where it could still be useful.
+The pre-merge E2E suite therefore proves application behaviour, while the post-deployment check
+proves this specific production authentication boundary. It does not claim to be a full
+functional smoke test of Azure SQL or interactive Entra sign-in.
 
 > **One environment, on purpose.** A real pipeline would deploy to a Test environment, smoke it,
 > and only then ask for approval to promote to Production. The lab uses a single environment to
@@ -373,31 +382,11 @@ other, and each runs at the only point where it could still be useful.
 > artifact, the ordering of `needs:` — are identical either way; what changes is how many
 > resource groups you pay for.
 
-### The agent's role here
-
-`deployment-review` invokes Copilot to read the Playwright evidence, probe the live API, and
-write a briefing on the state of the deployment. Look closely at what it is permitted to do:
-
-```yaml
-    continue-on-error: true
-    # ...
-            --allow-tool='read,search,shell(curl:*)'
-```
-
-`shell(curl:*)` rather than `execute`: the agent may make HTTP requests and nothing else. This
-is the narrowest tool grant in the entire lab, and it is narrow precisely because this job runs
-against live infrastructure.
-
-`continue-on-error: true` matters just as much. The agent cannot fail the run — and it cannot
-bless one either. It supplies an opinion; `e2e-test` and `smoke-test` supply the facts. If you
-deleted the agent job entirely, the pipeline's *decisions* would be unchanged. That is how you
-check the authority sits in the right place.
-
 ### The `environment` key is the approval gate
 
 ```yaml
   deploy:
-    needs: [build-and-test, security-scan, e2e-test]
+    needs: [build-and-test, security-scan, dependency-review, e2e-test, consolidate]
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
@@ -425,6 +414,31 @@ the same principle as the managed identity used by the application itself.
 
 ---
 
+## Step 6 — Complete the single workflow graph
+
+In the same `ci.yml`, add the auditor to the Exercise 5 matrix:
+
+```yaml
+matrix:
+  agent: [reviewer, security-scanner, auditor]
+```
+
+Then add `e2e-test` to `consolidate.needs` and update `deploy.needs` to the final dependency
+set:
+
+```yaml
+  consolidate:
+    needs: [dependency-review, agent-review, security-scan, e2e-test]
+
+  deploy:
+    needs: [build-and-test, security-scan, dependency-review, e2e-test, consolidate]
+```
+
+These edits progress the Exercise 5 workflow to the completed repository state without adding
+a second CI workflow.
+
+---
+
 ## Verify
 
 ```bash
@@ -445,13 +459,17 @@ grep -q 'environment:' .github/workflows/ci.yml && echo "PASS: deployment gated 
 grep -q 'e2e-test' .github/workflows/ci.yml && echo "PASS: e2e stage wired into ci.yml"
 grep -q 'required' <(gh api "repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/environments" --jq '.environments[].protection_rules[]?.type') \
   && echo "PASS: an environment has protection rules"
-```
 
-Now add the auditor to the Exercise 5 pipeline matrix:
-
-```yaml
-matrix:
-  agent: [reviewer, security-scanner, auditor]
+ruby -ryaml -e '
+d = YAML.safe_load(File.read(".github/workflows/ci.yml"), aliases: true) \
+  or abort("FAIL: empty workflow")
+jobs = d["jobs"]
+expected = %w[build-and-test security-scan dependency-review e2e-test agent-review consolidate publish-summary deploy]
+abort("FAIL: jobs are #{jobs.keys}") unless expected.all? { |job| jobs.key?(job) }
+abort("FAIL: auditor missing from matrix") unless jobs["agent-review"]["strategy"]["matrix"]["agent"].include?("auditor")
+abort("FAIL: consolidate must wait for e2e-test") unless jobs["consolidate"]["needs"].include?("e2e-test")
+abort("FAIL: deploy dependency graph is incomplete") unless %w[security-scan dependency-review e2e-test consolidate].all? { |job| jobs["deploy"]["needs"].include?(job) }
+puts "PASS: final ci.yml job graph matches the completed lab"'
 ```
 
 ---
@@ -476,8 +494,7 @@ matrix:
 **Workflows**
 
 - [ ] `.github/workflows/copilot-setup-steps.yml`
-- [ ] `.github/workflows/agentic-ci.yml`
-- [ ] `.github/workflows/ci.yml` — extended with `e2e-test → deploy → smoke-test → deployment-review`
+- [ ] `.github/workflows/ci.yml` — build, security, dependency review, E2E, agent review, consolidation, and gated deployment
 
 **Guardrails**
 
@@ -548,8 +565,6 @@ AGENTS.md                                  Agent-oriented project docs
 **Granting `edit` to the security scanner.** Findings need human triage.
 
 **Storing Azure credentials as long-lived secrets.** Use OIDC.
-
-**Deploying without `--what-if` validation.** Preview infrastructure changes first.
 
 ---
 

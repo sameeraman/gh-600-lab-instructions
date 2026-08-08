@@ -327,7 +327,7 @@ Environment required reviewer → deploying
 ### Artifact configuration
 
 ```yaml
-- uses: actions/upload-artifact@v4
+- uses: actions/upload-artifact@v7
   if: always()                      # upload even on failure
   with:
     name: report
